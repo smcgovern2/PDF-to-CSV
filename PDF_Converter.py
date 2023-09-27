@@ -4,12 +4,12 @@ import tabula
 import pandas as pd
 import datetime as dt
 
-#configs
+#Configs
 
 date_max = dt.date.today()
 date_min = dt.date(2022,1,1)
 
-#functions
+#Functions
 
 def clean_trailing_zeroes(df, i, columns):
     for col in columns:
@@ -20,6 +20,8 @@ def clean_trailing_zeroes(df, i, columns):
             
 #TODO: Validation to functions to reuse on master record
 
+
+#Alter dataframe for validation testing
 def poison_data(df):
     df.at[10,'Shipped Date'] = '01/01/2000'
     df.at[20,'Shipped Date'] = '01/01/2030'
@@ -43,11 +45,19 @@ def poison_data(df):
 
     
 
-# Read PDF File
+
+
+# input_path = input("Input path:/n")
+# output_path = input("output path:/n")
+
+input_path = "Reports/2023-09-05 3 MONTHS.pdf"
+output_path = "Results/2023-09-05 3 MONTHS.csv"
 
 mr_path = "Results/master_record.csv"
 
-df = tabula.read_pdf("Reports/2023-09-05 3 MONTHS.pdf", pages='all', stream=True)
+# Read PDF File
+
+df = tabula.read_pdf(input_path, pages='all', stream=True)
 
 df_processed = pd.DataFrame ()
 
@@ -87,7 +97,7 @@ df_processed.reset_index(drop=True,inplace=True)
 df_processed = poison_data(df_processed)
 
 
-#Removes duplicate shipment IDs and reindexes --- Needs Fix
+#Removes duplicate shipment IDs 
 try: df_processed = df_processed.drop_duplicates(subset=['Shipment ID'])
                                                  
 except:
@@ -149,7 +159,9 @@ df_processed.drop(index=drop_indexes,inplace=True, axis=0)
 
 df_processed = df_processed.reset_index(drop=True)
 
-df_processed.to_csv(mr_path, mode='w')
+df_processed.to_csv(output_path, mode='w')
+
+df_processed.to_csv(mr_path, mode='a')
 
 
 #look into these methods https://xlsxwriter.readthedocs.io/example_pandas_column_formats.html
