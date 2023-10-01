@@ -9,6 +9,11 @@ import datetime as dt
 date_max = dt.date.today()
 date_min = dt.date(2022,1,1)
 
+df_columns=['Shipped Date','Customer ID','Zip','Shipment ID','Order Number','PO Number', 'Order Value', 'Shipping Cost']
+
+poison = False
+
+skip_prompt = False
 #Functions
 #Also converts values to string
 def clean_trailing_zeroes(df, i, columns):
@@ -17,7 +22,8 @@ def clean_trailing_zeroes(df, i, columns):
             df.at[i,col] = str(df.loc[i,col]).replace(".0","")
         except(ValueError):
             print('non numeric ' + col + ' at index ' + i )
-            
+
+#Validates Currency, returns true when invalid
 def validate_currency_range(val, max, min):
     
     if val.startswith("$"):
@@ -26,7 +32,8 @@ def validate_currency_range(val, max, min):
         return True
     else:
         return False
-        
+
+#validates and returns df        
 def validate_dataframe (df):
     #Removes duplicate shipment IDs 
     try: df = df.drop_duplicates(subset=['Shipment ID'])
@@ -41,7 +48,7 @@ def validate_dataframe (df):
     for i in df.index:             
         
         #Standardizes values that are sometimes extracted as numpy.float, sets as str
-        clean_trailing_zeroes(df_processed, i, ['Zip','Order Number', 'PO Number', 'Shipment ID'])     
+        clean_trailing_zeroes(df, i, ['Zip','Order Number', 'PO Number', 'Shipment ID'])     
             
             
         #Allows current row until flipped      
@@ -49,7 +56,7 @@ def validate_dataframe (df):
         
         #Date-range Check
         try:
-            date_df = dt.datetime.strptime((df_processed.loc[i,'Shipped Date']),'%m/%d/%Y').date()
+            date_df = dt.datetime.strptime((df.loc[i,'Shipped Date']),'%m/%d/%Y').date()
             if not (date_min <= date_df <= date_max):
                 failed = True
                 print("Invalid value in shipped date at index " + str(i))
@@ -59,17 +66,17 @@ def validate_dataframe (df):
             
             
         #Zip Check, verifies numeric and length     
-        if not (df_processed.loc[i,'Zip'].isnumeric() and 5 <= len(df_processed.loc[i,'Zip']) <= 9):
+        if not (df.loc[i,'Zip'].isnumeric() and 5 <= len(df.loc[i,'Zip']) <= 9):
             failed = True
             print("Invalid value in ZIP at index " + str(i))
             
         #Order Value Check
-        order_value = df_processed.loc[i,'Order Value']
+        order_value = df.loc[i,'Order Value']
         if not failed:
             failed = validate_currency_range(order_value,10000,0)
         
         #Shipping cost check
-        shipping_cost = df_processed.loc[i,'Shipping Cost']
+        shipping_cost = df.loc[i,'Shipping Cost']
         if not failed:
             failed = validate_currency_range(shipping_cost,1000,0)
             
@@ -78,9 +85,11 @@ def validate_dataframe (df):
             
     print(drop_indexes)
 
-    df.drop(index=drop_indexes,inplace=True, axis=0)        
+    df = df.drop(index=drop_indexes, axis=0)        
     
-    df = df.reset_index(drop=True)
+    df.reset_index(drop=True, inplace=True)
+    
+    return df
 
 #Alter dataframe for validation testing        
 def poison_data(df):    
@@ -104,24 +113,28 @@ def poison_data(df):
     
     return df
 
-    
-# input_path = input("Input path:/n")
-# output_path = input("output path:/n")
+if not skip_prompt:    
+    input_path = input("Input path:/n")
+    output_path = input("output path:/n")
 
-input_path = "Reports/2023-09-05 3 MONTHS.pdf"
-output_path = "Results/2023-09-05 3 MONTHS.csv"
+if skip_prompt:
+    input_path = "reports/test data.pdf"
+    output_path = "results/test data.csv"
 
-mr_path = "Results/master_record.csv"
+mr_path = "results/master_record.csv"
 
 # Read PDF File
 
-df = tabula.read_pdf(input_path, pages='all', stream=True)
+df_input = tabula.read_pdf(input_path, pages='all', stream=True)
 
-df_processed = pd.DataFrame ()
+df_processed = pd.DataFrame (columns=df_columns)
 
+try:
+    df_master = pd.read_csv(mr_path, dtype=str)
+except FileNotFoundError:    
+    df_master = pd.DataFrame(df_columns)
 
-
-for page in df: 
+for page in df_input: 
     
     #Spilts Customer ID and ZIP columns when tabula recognizes as single column due to low whitespace, split on final whitespace char
     try:
@@ -153,27 +166,20 @@ for page in df:
     
 df_processed.reset_index(drop=True,inplace=True)   
 
-df_processed = poison_data(df_processed)
+if poison:
+    df_processed = poison_data(df_processed)
 
-
-#Removes duplicate shipment IDs 
-try: df_processed = df_processed.drop_duplicates(subset=['Shipment ID'])
-                                                 
-except:
-    print('Duplicate test failure')
-
-df_processed.reset_index(drop=True,inplace=True)
-
- #Validation 
-validate_dataframe(df_processed)
-
-
+df_processed = validate_dataframe(df_processed)
 
 df_processed.to_csv(output_path, mode='w')
 
-df_processed.to_csv(mr_path, mode='a')
+df_master = pd.concat([df_master,df_processed], axis=0)
 
+df_master = validate_dataframe(df_master)
 
+df_processed.to_csv(mr_path, mode='w')
+    
+    
 #look into these methods https://xlsxwriter.readthedocs.io/example_pandas_column_formats.html
 #   with pd.ExcelWriter('Results/output.xlsx')
 #     df_processed.to_excel('Results/output.xlsx')
