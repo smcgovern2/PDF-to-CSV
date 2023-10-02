@@ -3,8 +3,10 @@
 import tabula
 import pandas as pd #TODO enforce version number for deprecation
 import datetime as dt
-
+import warnings
 #Configs
+
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 date_max = dt.date.today()
 date_min = dt.date(2022,1,1)
@@ -13,7 +15,7 @@ df_columns=['Shipped Date','Customer ID','Zip','Shipment ID','Order Number','PO 
 
 poison = False
 
-skip_prompt = False
+skip_prompt = True
 #Functions
 #Also converts values to string
 def clean_trailing_zeroes(df, i, columns):
@@ -56,6 +58,7 @@ def validate_dataframe (df):
         
         #Date-range Check
         try:
+            tester = df.iloc[i].tolist()
             date_df = dt.datetime.strptime((df.loc[i,'Shipped Date']),'%m/%d/%Y').date()
             if not (date_min <= date_df <= date_max):
                 failed = True
@@ -114,8 +117,8 @@ def poison_data(df):
     return df
 
 if not skip_prompt:    
-    input_path = input("Input path:/n")
-    output_path = input("output path:/n")
+    input_path = input("Input path:\n")
+    output_path = input("output path:\n")
 
 if skip_prompt:
     input_path = "reports/test data.pdf"
@@ -135,34 +138,51 @@ except FileNotFoundError:
     df_master = pd.DataFrame(df_columns)
 
 for page in df_input: 
-    
+
     #Spilts Customer ID and ZIP columns when tabula recognizes as single column due to low whitespace, split on final whitespace char
     try:
         page[['Customer ID', 'Zip']] = page["Customer ID Zip"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
         page = page.drop('Customer ID Zip', axis=1)
     except:
         print("CIDZIP Pass")
+        
+    #As above for Shipment ID and Order Number
+    try:
+        page[['Shipment ID', 'Order Number']] = page["Shipment ID Order Number"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
+        page = page.drop('Shipment ID Order Number', axis=1)
+    except:
+        print("SIDON Pass")
+        
     #Adresses extractor returning empty column from some input files
     try:
-        page = page.drop('Unnamed: 0', axis=1)
+        page = page[page.columns.intersection(df_columns)]
     except:
         print('Blank Col Pass')
 
-    #Scans for entries without shipped dates - These are rows where the Customer ID field has overflowed, concats with previous row
-    try:
+    #
+    if list(page.columns.values).sort() == df_columns.sort() and len(list(page.columns.values)) > 0:
+        #Scans for entries without shipment ids - These are often rows where the Customer ID field has overflowed, concats with previous row, then drops any rows without a shipment id
+        
+        drop_indexes =[]
         i = 0
         while len(page.index) > i:          
-            print(page.loc[i,'Shipped Date'])
-            x = page.loc[i,'Shipped Date']
-            if not page.loc[i,'Shipped Date'] or pd.isnull(page.loc[i,'Shipped Date']) or (page.loc[i,'Shipped Date']==''):       
-                page.loc[i-1,'Customer ID'] += ' ' + page.loc[i,'Customer ID']
-            i+=1  
-    except:
-        print('Shipped Date Unproccessed')
-    #clears all rows used in previous step
-    page = page[page['Shipment ID'].notnull()]  
+            x = page.loc[i,'Shipment ID']
+            if not x or pd.isnull(x) or x=='' or x=='nan':
+                try:
+                    page.loc[i-1,'Customer ID'] += ' ' + page.loc[i,'Customer ID']
+                except:
+                    pass
+                drop_indexes.append(i)                           
+            i+=1 
+        page = page.drop(index=drop_indexes, axis=0)
+        page.reset_index(drop=True, inplace=True)
+        
+        
+        df_processed = pd.concat([df_processed, page], axis=0)
+    else:
+        print('Page failed to process with columns: ' + str(page.columns.values.tolist()))
     
-    df_processed = pd.concat([df_processed, page], axis=0)
+    
     
 df_processed.reset_index(drop=True,inplace=True)   
 
