@@ -5,7 +5,9 @@ import pandas as pd #TODO enforce version number for deprecation
 import datetime as dt
 import warnings
 import numpy as np
-#Configs
+import PySimpleGUI as sg
+
+#Configs/Globals
 
 warnings.filterwarnings('ignore', category=FutureWarning)
 
@@ -15,6 +17,14 @@ date_min = dt.date(2022,1,1)
 
 
 df_columns=['Shipped Date','Customer ID','Zip','Shipment ID','Order Number','PO Number', 'Order Value', 'Shipping Cost']
+
+df_actual=pd.DataFrame(columns=df_columns)
+
+df_filtered=pd.DataFrame(columns=df_columns)
+
+df_raw=pd.DataFrame(columns=df_columns)
+
+
 
 poison = False
 
@@ -108,6 +118,7 @@ rmins = [
 ]
 
 rlabels = [
+    "All Orders",
     "$0.00 - $11.99",
     "$12.00 - $14.99",
     "$15.00 - $24.99",
@@ -309,8 +320,6 @@ def group_by_order_value(df):
         
     print(grouped_df.to_string())
         
-    
-
 #Alter dataframe for validation testing        
 def poison_data(df):    
     df.at[10,'Shipped Date'] = '01/01/2000'
@@ -333,6 +342,139 @@ def poison_data(df):
     
     return df
 
+#Returns Dataframe
+def import_pdf(input_path):
+    
+    df_raw = tabula.read_pdf(input_path, pages='all', stream=True)
+    df_processed=pd.DataFrame(columns=df_columns)
+    i=1
+    for page in df_raw: 
+        i +=1
+
+        #Spilts Customer ID and ZIP columns when tabula recognizes as single column due to low whitespace, split on final whitespace char
+        try:
+            page[['Customer ID', 'Zip']] = page["Customer ID Zip"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
+            page = page.drop('Customer ID Zip', axis=1)
+        except:
+            print("CIDZIP Pass")
+            
+        #As above for Shipment ID and Order Number
+        try:
+            page[['Shipment ID', 'Order Number']] = page["Shipment ID Order Number"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
+            page = page.drop('Shipment ID Order Number', axis=1)
+        except:
+            print("SIDON Pass")
+            
+        #Adresses extractor returning empty column from some input files
+        try:
+            page = page[page.columns.intersection(df_columns)]
+        except:
+            print('Blank Col Pass')
+
+        #Scans for entries without shipment ids - These are most often rows where the Customer ID field has overflowed, concats with previous row, then drops any rows without a shipment id
+        if list(page.columns.values).sort() == df_columns.sort() and len(list(page.columns.values)) > 0:
+            drop_indexes =[]
+            j = 0
+            while len(page.index) > j:          
+                x = page.loc[j,'Shipment ID']
+                if not x or pd.isnull(x) or x=='' or x=='nan':
+                    try:
+                        page.loc[j-1,'Customer ID'] += ' ' + page.loc[j,'Customer ID']
+                    except:
+                        pass
+                    drop_indexes.append(j)                           
+                j+=1 
+            page = page.drop(index=drop_indexes, axis=0)
+            page.reset_index(drop=True, inplace=True)
+            df_processed = pd.concat([df_processed, page], axis=0)
+        else:
+            print('Page ' + str(j) + ' failed to process with columns: ' + str(page.columns.values.tolist()))
+    
+    df_processed.reset_index(drop=True,inplace=True)
+    return df_processed
+
+def build_gui():
+    
+    NAME_SIZE = 23
+
+
+    def name(name):
+        dots = NAME_SIZE-len(name)-2
+        return sg.Text(name + ' ' + '•'*dots, size=(NAME_SIZE,1), justification='r',pad=(0,0), font='Courier 10')
+
+    
+    layout_l=[ 
+        [name('Order Value Range: ')],
+        [sg.Listbox(rlabels, s=(23,25), key='-range_select-')],
+        [sg.Button('Filter')]]
+    
+
+    layout_r=[
+        [name('Matching orders: ')],
+        [sg.Table(headings=df_columns, values=[], num_rows=28, key='-table_display-')]]
+    
+    layout = [  [name('Input File: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
+                [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs(file_types=("CSV","*.csv"), initial_folder="/results")],
+                [sg.HSep()],
+                [sg.Col(layout_l, p=0),sg.Col(layout_r, p=0)]]
+
+    # Create the Window
+    window = sg.Window('PDF Converter', layout, resizable=True)
+    # Event Loop to process "events" and get the "values" of the inputs
+    while True:
+        event, values = window.read()
+        if event == sg.WIN_CLOSED or event == 'Cancel': # if user closes window or clicks cancel
+            break
+
+        if event == 'Load':          
+            try:
+                input_path = values['-input_path-']
+                df_actual = import_pdf(input_path)
+            except Exception as e:
+                print('Failed at import')
+            
+            try:
+                df_actual = validate_dataframe(df_actual)
+            except:
+                print('Failed at Validation')
+                
+            try:
+                table_values = df_actual.values.tolist()
+                window['-table_display-'].update(values=table_values)
+            except:
+                print('failed updating gui')
+        
+        
+        if event == 'Filter':
+            try:
+                selection_range = window.Element('-range_select-').Widget.curselection()[0]
+                print(selection_range)
+                if selection_range == 0:
+                    df_filtered = df_actual
+                else:
+                    rmin = rmins[selection_range - 1]
+                    rmax = rmins[selection_range]
+                    df_filtered = df_actual[df_actual['Order Value'].replace('\$|,', '', regex=True).astype(float).between(rmin,rmax-0.01)]
+                print(df_filtered)
+                try:
+                    table_values = df_filtered.values.tolist()
+                    window['-table_display-'].update(values=table_values)
+                except:
+                    print('failed updating gui')
+            except Exception as e:
+                pass
+            
+        if event == '-output_file-':
+            outfile_name = values['-output_file-']
+            if outfile_name:
+                df_actual.to_csv(outfile_name, mode='w')
+            
+    window.close()
+
+
+
+build_gui()
+
 if not skip_prompt:    
     input_path = input("Input path:\n")
     output_path = input("output path:\n")
@@ -353,55 +495,8 @@ try:
     df_master = pd.read_csv(mr_path, dtype=str)
 except FileNotFoundError:    
     df_master = pd.DataFrame(df_columns)
-
-for page in df_input: 
-
-    #Spilts Customer ID and ZIP columns when tabula recognizes as single column due to low whitespace, split on final whitespace char
-    try:
-        page[['Customer ID', 'Zip']] = page["Customer ID Zip"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
-        page = page.drop('Customer ID Zip', axis=1)
-    except:
-        print("CIDZIP Pass")
-        
-    #As above for Shipment ID and Order Number
-    try:
-        page[['Shipment ID', 'Order Number']] = page["Shipment ID Order Number"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
-        page = page.drop('Shipment ID Order Number', axis=1)
-    except:
-        print("SIDON Pass")
-        
-    #Adresses extractor returning empty column from some input files
-    try:
-        page = page[page.columns.intersection(df_columns)]
-    except:
-        print('Blank Col Pass')
-
-    #
-    if list(page.columns.values).sort() == df_columns.sort() and len(list(page.columns.values)) > 0:
-        #Scans for entries without shipment ids - These are often rows where the Customer ID field has overflowed, concats with previous row, then drops any rows without a shipment id
-        
-        drop_indexes =[]
-        i = 0
-        while len(page.index) > i:          
-            x = page.loc[i,'Shipment ID']
-            if not x or pd.isnull(x) or x=='' or x=='nan':
-                try:
-                    page.loc[i-1,'Customer ID'] += ' ' + page.loc[i,'Customer ID']
-                except:
-                    pass
-                drop_indexes.append(i)                           
-            i+=1 
-        page = page.drop(index=drop_indexes, axis=0)
-        page.reset_index(drop=True, inplace=True)
-        
-        
-        df_processed = pd.concat([df_processed, page], axis=0)
-    else:
-        print('Page failed to process with columns: ' + str(page.columns.values.tolist()))
     
-    
-    
-df_processed.reset_index(drop=True,inplace=True)   
+
 
 if poison:
     df_processed = poison_data(df_processed)
