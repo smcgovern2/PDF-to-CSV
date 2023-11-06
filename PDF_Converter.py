@@ -475,45 +475,45 @@ def build_gui():
 
 build_gui()
 
-if not skip_prompt:    
-    input_path = input("Input path:\n")
-    output_path = input("output path:\n")
+# if not skip_prompt:    
+#     input_path = input("Input path:\n")
+#     output_path = input("output path:\n")
 
-if skip_prompt:
-    input_path = "reports/Test Data.pdf"
-    output_path = "results/Test Data.csv"
+# if skip_prompt:
+#     input_path = "reports/Test Data.pdf"
+#     output_path = "results/Test Data.csv"
 
-mr_path = "results/master_record.csv"
+# mr_path = "results/master_record.csv"
 
-# Read PDF File
+# # Read PDF File
 
-df_input = tabula.read_pdf(input_path, pages='all', stream=True)
+# df_input = tabula.read_pdf(input_path, pages='all', stream=True)
 
-df_processed = pd.DataFrame (columns=df_columns)
+# df_processed = pd.DataFrame (columns=df_columns)
 
-try:
-    df_master = pd.read_csv(mr_path, dtype=str)
-except FileNotFoundError:    
-    df_master = pd.DataFrame(df_columns)
+# try:
+#     df_master = pd.read_csv(mr_path, dtype=str)
+# except FileNotFoundError:    
+#     df_master = pd.DataFrame(df_columns)
     
 
 
-if poison:
-    df_processed = poison_data(df_processed)
+# if poison:
+#     df_processed = poison_data(df_processed)
 
-df_processed = validate_dataframe(df_processed)
+# df_processed = validate_dataframe(df_processed)
 
-group_by_order_value(df_processed)
+# group_by_order_value(df_processed)
 
-df_processed.to_csv(output_path, mode='w')
+# df_processed.to_csv(output_path, mode='w')
 
-df_master = pd.concat([df_master,df_processed], axis=0)
+# df_master = pd.concat([df_master,df_processed], axis=0)
 
-df_master = validate_dataframe(df_master)
+# df_master = validate_dataframe(df_master)
 
-group_by_order_value (df_master)
+# group_by_order_value (df_master)
 
-df_processed.to_csv(mr_path, mode='w')
+# df_processed.to_csv(mr_path, mode='w')
     
     
 #look into these methods https://xlsxwriter.readthedocs.io/example_pandas_column_formats.html

@@ -3,7 +3,8 @@ import subprocess as sp
 # implement pip as a subprocess:
 sp.check_call([sys.executable, '-m', 'pip', 'install', 'tabula-py'])
 sp.check_call([sys.executable, '-m', 'pip', 'install', 'pandas'])
-#TODO numpy,pysimplegui
+sp.check_call([sys.executable, '-m', 'pip', 'install', 'numpy'])
+sp.check_call([sys.executable, '-m', 'pip', 'install', 'PySimpleGui'])
 
 #check for valid java
 try:
