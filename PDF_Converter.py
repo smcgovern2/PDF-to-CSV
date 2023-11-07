@@ -414,7 +414,7 @@ def build_gui():
         [sg.Table(headings=df_columns, values=[], num_rows=28, key='-table_display-')]]
     
     layout = [  [name('Input File: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
-                [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs(file_types=("CSV","*.csv"), initial_folder="/results")],
+                [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-output_path-'), sg.Button('Submit')],
                 [sg.HSep()],
                 [sg.Col(layout_l, p=0),sg.Col(layout_r, p=0)]]
 
@@ -464,15 +464,15 @@ def build_gui():
             except Exception as e:
                 pass
             
-        if event == '-output_file-':
-            outfile_name = values['-output_file-']
+        if event == 'Submit':
+            outfile_name = values['-output_path-']
             if outfile_name:
                 df_actual.to_csv(outfile_name, mode='w')
             
     window.close()
 
 
-
+#Main
 build_gui()
 
 # if not skip_prompt:    
