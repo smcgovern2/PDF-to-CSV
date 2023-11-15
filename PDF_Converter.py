@@ -18,12 +18,13 @@ date_min = dt.date(2022,1,1)
 
 df_columns=['Shipped Date','Customer ID','Zip','Shipment ID','Order Number','PO Number', 'Order Value', 'Shipping Cost']
 
-df_actual=pd.DataFrame(columns=df_columns)
+
 
 df_filtered=pd.DataFrame(columns=df_columns)
 
 df_raw=pd.DataFrame(columns=df_columns)
 
+df_actual=pd.DataFrame(columns=df_columns)
 
 
 poison = False
@@ -397,6 +398,7 @@ def build_gui():
     
     NAME_SIZE = 23
 
+    table_values = pd.DataFrame(columns=df_columns)
 
     def name(name):
         dots = NAME_SIZE-len(name)-2
@@ -404,22 +406,23 @@ def build_gui():
 
     
     layout_l=[ 
-        [name('Order Value Range: ')],
-        [sg.Listbox(rlabels, s=(23,25), key='-range_select-')],
+        [sg.Text('Order Value Range: ')],
+        [sg.Listbox(rlabels, key='-range_select-', size=(23, 25), expand_y=True, expand_x=False)],
         [sg.Button('Filter')]]
     
 
     layout_r=[
         [name('Matching orders: ')],
-        [sg.Table(headings=df_columns, values=[], num_rows=28, key='-table_display-')]]
+        [sg.Table(headings=df_columns, auto_size_columns = False,  values=[], key='-table_display-', expand_x=True, expand_y=True, alternating_row_color='darkblue', enable_click_events=True)],
+        [sg.Text('Average shipping cost: '), sg.Text('      ', key='-average-')]]
     
-    layout = [  [name('Input File: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
-                [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-output_path-'), sg.Button('Submit')],
-                [sg.HSep()],
-                [sg.Col(layout_l, p=0),sg.Col(layout_r, p=0)]]
+    layout = [[name('Input file: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
+        [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-output_path-'), sg.Button('Submit')],
+        [sg.HSep()],
+        [sg.Col(layout_l, p=3, expand_y=True, expand_x=False, element_justification='left'), sg.VSep(), sg.Col(layout_r, p=3,  expand_x=True, expand_y=True)]]
 
     # Create the Window
-    window = sg.Window('PDF Converter', layout, resizable=True)
+    window = sg.Window('PDF Converter', layout, resizable=True, margins=(32,16))
     # Event Loop to process "events" and get the "values" of the inputs
     while True:
         event, values = window.read()
@@ -439,10 +442,18 @@ def build_gui():
                 print('Failed at Validation')
                 
             try:
+                df_filtered = df_actual
                 table_values = df_actual.values.tolist()
                 window['-table_display-'].update(values=table_values)
             except:
                 print('failed updating gui')
+                
+            try:
+                df_temp = df_actual
+                df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)             
+                window['-average-'].update('$%.2f' % (df_temp['Shipping Cost'].mean()))
+            except:
+                print('failed updating avg')
         
         
         if event == 'Filter':
@@ -461,6 +472,13 @@ def build_gui():
                     window['-table_display-'].update(values=table_values)
                 except:
                     print('failed updating gui')
+                    
+                try:
+                    df_temp = df_filtered
+                    df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)             
+                    window['-average-'].update('$%.2f' % (df_temp['Shipping Cost'].mean()))
+                except:
+                    print('failed updating avg')
             except Exception as e:
                 pass
             
@@ -468,6 +486,17 @@ def build_gui():
             outfile_name = values['-output_path-']
             if outfile_name:
                 df_actual.to_csv(outfile_name, mode='w')
+                
+        if isinstance(event, tuple):
+            if event[0] == '-table_display-':
+                row, column = event[2]
+                if row == -1:
+                    df_filtered=df_filtered.sort_values(by=df_filtered.columns[column])
+                    try:
+                        table_values = df_filtered.values.tolist()
+                        window['-table_display-'].update(values=table_values)
+                    except:
+                        print('failed updating gui')
             
     window.close()
 
