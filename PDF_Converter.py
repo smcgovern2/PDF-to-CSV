@@ -1,18 +1,20 @@
 
 # Import Module 
-import tabula
-import pandas as pd #TODO enforce version number for deprecation
-import datetime as dt
+import tabula #Working Version: 2.1.0
+import pandas as pd #TODO enforce version number for deprecation #Working Version: 2.1.0
+import datetime as dt 
 import warnings
-import numpy as np
-import PySimpleGUI as sg
+import numpy as np #Working Version: 1.25.2
+import PySimpleGUI as sg #Working Version: 4.60.5
 
 #Configs/Globals
-
+#For warning by pandas, github contributors have currently halted deprication until alternative is supplied
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 date_max = dt.date.today()
 date_min = dt.date(2022,1,1)
+
+master_path = 'results/master_record.csv'
 
 
 
@@ -217,7 +219,7 @@ def clean_trailing_zeroes(df, i, columns):
 
 #Validates Currency, returns true when invalid
 def validate_currency_range(val, max, min):
-    
+    val = str(val)
     if val.startswith("$"):
         val = val.replace("$","").strip()
     if not ((val.isnumeric() or val.replace(".", "").isnumeric()) and min <= float(val) <= max):
@@ -249,7 +251,7 @@ def validate_dataframe (df):
         #Date-range Check
         try:
             tester = df.iloc[i].tolist()
-            date_df = dt.datetime.strptime((df.loc[i,'Shipped Date']),'%m/%d/%Y').date()
+            date_df = dt.datetime.strptime(str(df.loc[i,'Shipped Date']),'%m/%d/%Y').date()
             if not (date_min <= date_df <= date_max):
                 failed = True
                 print("Invalid value in shipped date at index " + str(i))
@@ -258,8 +260,9 @@ def validate_dataframe (df):
             print("Invalid value in shipped date at index " + str(i))
             
             
-        #Zip Check, verifies numeric and length     
-        if not (df.loc[i,'Zip'].isnumeric() and 5 <= len(df.loc[i,'Zip']) <= 9):
+        #Zip Check, verifies numeric and length
+        zip = df.loc[i,'Zip']   
+        if not ((str(zip).isnumeric()) and 5 <= len(zip) <= 10):
             failed = True
             print("Invalid value in ZIP at index " + str(i))
             
@@ -319,8 +322,7 @@ def group_by_order_value(df):
     
     grouped_df['Average Shipping Cost'] = avgs
         
-    print(grouped_df.to_string())
-        
+    print(grouped_df.to_string())       
 #Alter dataframe for validation testing        
 def poison_data(df):    
     df.at[10,'Shipped Date'] = '01/01/2000'
@@ -348,10 +350,9 @@ def import_pdf(input_path):
     
     df_raw = tabula.read_pdf(input_path, pages='all', stream=True)
     df_processed=pd.DataFrame(columns=df_columns)
-    i=1
+    i=0
     for page in df_raw: 
-        i +=1
-
+        
         #Spilts Customer ID and ZIP columns when tabula recognizes as single column due to low whitespace, split on final whitespace char
         try:
             page[['Customer ID', 'Zip']] = page["Customer ID Zip"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
@@ -390,9 +391,48 @@ def import_pdf(input_path):
             df_processed = pd.concat([df_processed, page], axis=0)
         else:
             print('Page ' + str(j) + ' failed to process with columns: ' + str(page.columns.values.tolist()))
-    
+        i+=1
     df_processed.reset_index(drop=True,inplace=True)
     return df_processed
+
+def import_csv(input_path):
+    
+    df=pd.DataFrame(columns=df_columns)
+    
+    df = pd.read_csv(input_path, names=df_columns, header=0)
+    
+    return df
+
+def build_metrics_df(df):
+    df_metrics = pd.DataFrame(columns= ['Range','Count', 'Max', 'Min', 'Avg'])
+    df_temp = df
+    df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)
+    for i, label in enumerate(rlabels):
+        if i==0: 
+            data = {'Range' : label, 
+                      'Count' :df_temp['Shipping Cost'].count(), 
+                      'Max' : df_temp['Shipping Cost'].max(), 
+                      'Min': df_temp['Shipping Cost'].min(), 
+                      'Avg' : '%.2f'%df_temp['Shipping Cost'].mean() }
+            newRow = pd.DataFrame(data,index=[0])        
+            df_metrics = pd.concat([df_metrics, newRow], axis=0, ignore_index=True)
+        else:
+            rmin=rmins[i - 1]
+            rmax=rmins[i]
+            df_filtered = df_temp[df_temp['Order Value'].replace('\$|,', '', regex=True).astype(float).between(rmin,rmax-0.01)]
+            data = {'Range' : label, 
+                      'Count' :df_filtered['Shipping Cost'].count(), 
+                      'Max' : df_filtered['Shipping Cost'].max(), 
+                      'Min': df_filtered['Shipping Cost'].min(), 
+                      'Avg' : '%.2f'%df_filtered['Shipping Cost'].mean()  }
+            newRow = pd.DataFrame(data,index=[0])                 
+            df_metrics = pd.concat([df_metrics, newRow], axis=0, ignore_index=True)
+            
+        
+    return df_metrics
+        
+    
+
 
 def build_gui():
     
@@ -414,10 +454,11 @@ def build_gui():
     layout_r=[
         [name('Matching orders: ')],
         [sg.Table(headings=df_columns, auto_size_columns = False,  values=[], key='-table_display-', expand_x=True, expand_y=True, alternating_row_color='darkblue', enable_click_events=True)],
-        [sg.Text('Average shipping cost: '), sg.Text('      ', key='-average-')]]
+        [sg.Text('Average shipping cost: '), sg.Text('      ', key='-average-'),sg.Text('Count: '), sg.Text('      ', key='-count-'),sg.Text('Max Shipping Cost: '), sg.Text('      ', key='-max-'),sg.Text('Min Shipping Cost: '), sg.Text('      ', key='-min-')]]
     
     layout = [[name('Input file: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
-        [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-output_path-'), sg.Button('Submit')],
+        [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-output_path-'), sg.Button('Submit'),sg.Text('   ', key='-save_success-')],
+        [name('Save Metrics CSV as:'), sg.InputText(key='-met_output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-met_output_path-'), sg.Button('Save Metrics'), sg.Text('    ',key='-met_save_success-')],
         [sg.HSep()],
         [sg.Col(layout_l, p=3, expand_y=True, expand_x=False, element_justification='left'), sg.VSep(), sg.Col(layout_r, p=3,  expand_x=True, expand_y=True)]]
 
@@ -432,7 +473,10 @@ def build_gui():
         if event == 'Load':          
             try:
                 input_path = values['-input_path-']
-                df_actual = import_pdf(input_path)
+                if input_path.endswith('.pdf'):
+                    df_actual = import_pdf(input_path)
+                elif input_path.endswith('.csv'):
+                    df_actual = import_csv(input_path)
             except Exception as e:
                 print('Failed at import')
             
@@ -450,10 +494,16 @@ def build_gui():
                 
             try:
                 df_temp = df_actual
-                df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)             
+                #TODO: Repeat Code to function
+                df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)        
                 window['-average-'].update('$%.2f' % (df_temp['Shipping Cost'].mean()))
+                window['-count-'].update((df_temp['Shipping Cost'].count()))
+                window['-max-'].update('$%.2f' % (df_temp['Shipping Cost'].max()))
+                window['-min-'].update('$%.2f' % (df_temp['Shipping Cost'].min()))
+                
+                
             except:
-                print('failed updating avg')
+                print('failed updating bottom-row metrics')
         
         
         if event == 'Filter':
@@ -477,6 +527,10 @@ def build_gui():
                     df_temp = df_filtered
                     df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)             
                     window['-average-'].update('$%.2f' % (df_temp['Shipping Cost'].mean()))
+                    window['-count-'].update((df_temp['Shipping Cost'].count()))
+                    window['-max-'].update('$%.2f' % (df_temp['Shipping Cost'].max()))
+                    window['-min-'].update('$%.2f' % (df_temp['Shipping Cost'].min()))
+                
                 except:
                     print('failed updating avg')
             except Exception as e:
@@ -486,7 +540,15 @@ def build_gui():
             outfile_name = values['-output_path-']
             if outfile_name:
                 df_actual.to_csv(outfile_name, mode='w')
-                
+                window['-save_success-'].update('Success')
+                try:
+                    df_master = import_csv(master_path)
+                    df_master = pd.concat([df_actual,df_master], axis=0, ignore_index=True)
+                    df_master.reset_index(inplace=True)
+                    df_master = validate_dataframe(df_master)
+                except FileNotFoundError:
+                    df_master = df_actual
+                df_master.to_csv(master_path, mode='w')
         if isinstance(event, tuple):
             if event[0] == '-table_display-':
                 row, column = event[2]
@@ -497,6 +559,13 @@ def build_gui():
                         window['-table_display-'].update(values=table_values)
                     except:
                         print('failed updating gui')
+                        
+        if event == 'Save Metrics':
+            outfile_name = values['-met_output_path-']
+            if outfile_name:
+                df_metrics = build_metrics_df(df_actual)
+                df_metrics.to_csv(outfile_name, mode='w')
+                window['-met_save_success-'].update('Success')
             
     window.close()
 
