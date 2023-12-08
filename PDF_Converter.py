@@ -29,7 +29,7 @@ df_raw=pd.DataFrame(columns=df_columns)
 #For full validated data from working file, as opposed to df_filtered 
 df_actual=pd.DataFrame(columns=df_columns)
 
-#For data in within constraint, used for filtered records display
+#For data within constraint, used for filtered records display only
 df_filtered=pd.DataFrame(columns=df_columns)
 
 #False unless testing
@@ -216,6 +216,7 @@ rlabels = [
 
 
 #Functions
+
 #Also converts values to string
 def clean_trailing_zeroes(df, i, columns):
      for col in columns:
@@ -295,65 +296,27 @@ def validate_dataframe (df):
     
     return df
 
-def group_by_order_value(df):
-    df_local = df.copy()
-    for col in df_local.columns:
-        if df_local[col].dtype == 'object' and '$' in df_local[col].iloc[0]:
-            df_local[col] = df_local[col].str.replace('$', '')
-            
-    df_local['Order Value'] = pd.to_numeric(df_local['Order Value'])
-    df_local['Shipping Cost'] = pd.to_numeric(df_local['Shipping Cost'])
-    
-    grouped_df = pd.DataFrame(columns=['Range', 'Average Shipping Cost'])
-    grouped_df['Range'] = pd.Series(rlabels)
-    
-    i = 1
-    avgs=[]
-    while i <= len(rmins) - 1:
-        avg = 0
-        inrange = pd.DataFrame()
-        
-        try:
-            if i < len(rmins):
-                inrange = df_local[df_local['Order Value'].between(rmins[i-1],rmins[i]-0.01)]
-                avg = inrange['Shipping Cost'].mean()
-            if  i == len(rmins):
-                inrange = df_local[df_local['Order Value'].ge(rmins[i-1])]
-                avg = inrange['Shipping Cost'].mean()
-        except KeyError:
-            avg = 0
-            
-        if(pd.isna(avg)):
-            avg = 0
-        avgs.append(avg)
-        i += 1
-    
-    grouped_df['Average Shipping Cost'] = avgs
-        
-   #print(grouped_df.to_string())       
-
-#Alter dataframe with bad datafor validation testing    
-    
-# def poison_data(df):    
-#     df.at[10,'Shipped Date'] = '01/01/2000'
-#     df.at[20,'Shipped Date'] = '01/01/2030'
-#     df.at[55, 'Shipped Date'] = 'AAA'
+#Inject dataframe with bad data for validation testing       
+def poison_data(df):    
+    df.at[10,'Shipped Date'] = '01/01/2000'
+    df.at[20,'Shipped Date'] = '01/01/2030'
+    df.at[55, 'Shipped Date'] = 'AAA'
    
-#     df.at[30,'Zip'] = 333
-#     df.at[40,'Zip'] = 444455556666
-#     df.at[50,'Zip'] = 'ABC123'
+    df.at[30,'Zip'] = 333
+    df.at[40,'Zip'] = 444455556666
+    df.at[50,'Zip'] = 'ABC123'
     
-#     df.at[60,'Order Value'] = '$2000.00'
-#     df.at[65,'Order Value'] = '-$20.00'
-#     df.at[15,'Order Value'] = 'Fifty Dollars'
+    df.at[60,'Order Value'] = '$2000.00'
+    df.at[65,'Order Value'] = '-$20.00'
+    df.at[15,'Order Value'] = 'Fifty Dollars'
    
-#     df.at[25,'Shipping Cost'] = '$20000.00'
-#     df.at[35,'Shipping Cost'] = '-$20.00'
-#     df.at[45,'Shipping Cost'] = 'Fifty Dollars'
+    df.at[25,'Shipping Cost'] = '$20000.00'
+    df.at[35,'Shipping Cost'] = '-$20.00'
+    df.at[45,'Shipping Cost'] = 'Fifty Dollars'
     
-#     df.loc[0:5,'Shipment ID'] = '94612361042629129568'
+    df.loc[0:5,'Shipment ID'] = '94612361042629129568'
     
-#     return df
+    return df
 
 #Returns Dataframe
 def import_pdf(input_path):
@@ -621,49 +584,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-#Following is leftover from command line implimentation
-
-# if not skip_prompt:    
-#     input_path = input("Input path:\n")
-#     output_path = input("output path:\n")
-
-# if skip_prompt:
-#     input_path = "reports/Test Data.pdf"
-#     output_path = "results/Test Data.csv"
-
-# mr_path = "results/master_record.csv"
-
-# # Read PDF File
-
-# df_input = tabula.read_pdf(input_path, pages='all', stream=True)
-
-# df_processed = pd.DataFrame (columns=df_columns)
-
-# try:
-#     df_master = pd.read_csv(mr_path, dtype=str)
-# except FileNotFoundError:    
-#     df_master = pd.DataFrame(df_columns)
-    
-
-
-# if poison:
-#     df_processed = poison_data(df_processed)
-
-# df_processed = validate_dataframe(df_processed)
-
-# group_by_order_value(df_processed)
-
-# df_processed.to_csv(output_path, mode='w')
-
-# df_master = pd.concat([df_master,df_processed], axis=0)
-
-# df_master = validate_dataframe(df_master)
-
-# group_by_order_value (df_master)
-
-# df_processed.to_csv(mr_path, mode='w')
-    
     
 #look into these methods https://xlsxwriter.readthedocs.io/example_pandas_column_formats.html
 #   with pd.ExcelWriter('Results/output.xlsx')
