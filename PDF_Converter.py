@@ -22,17 +22,24 @@ df_columns=['Shipped Date','Customer ID','Zip','Shipment ID','Order Number','PO 
 
 
 
-df_filtered=pd.DataFrame(columns=df_columns)
 
+#For data directly from tabula
 df_raw=pd.DataFrame(columns=df_columns)
 
+#For full validated data from working file, as opposed to df_filtered 
 df_actual=pd.DataFrame(columns=df_columns)
 
+#For data in within constraint, used for filtered records display
+df_filtered=pd.DataFrame(columns=df_columns)
 
+#False unless testing
 poison = False
 
+#True unless using command line version
 skip_prompt = True
 
+
+#value ranges hardcoded in interest of time, should be importable 
 rmins = [
     0.00,
     12.00,
@@ -230,10 +237,11 @@ def validate_currency_range(val, max, min):
 #validates and returns df        
 def validate_dataframe (df):
     #Removes duplicate shipment IDs 
-    try: df = df.drop_duplicates(subset=['Shipment ID'])
+    try: 
+        df = df.drop_duplicates(subset=['Shipment ID'])
                                                     
     except:
-        print('Duplicate test failure')
+        print('Failed to resolve duplicate records')
 
     df.reset_index(drop=True,inplace=True)
     
@@ -241,7 +249,7 @@ def validate_dataframe (df):
     
     for i in df.index:             
         
-        #Standardizes values that are sometimes extracted as numpy.float, sets as str
+        #Standardizes values that are sometimes extracted by tabula as numpy.float, sets as str
         clean_trailing_zeroes(df, i, ['Zip','Order Number', 'PO Number', 'Shipment ID'])     
             
             
@@ -279,7 +287,7 @@ def validate_dataframe (df):
         if failed == True:
             drop_indexes.append(i)
             
-    print(drop_indexes)
+    #print(drop_indexes)
 
     df = df.drop(index=drop_indexes, axis=0)        
     
@@ -322,28 +330,30 @@ def group_by_order_value(df):
     
     grouped_df['Average Shipping Cost'] = avgs
         
-    print(grouped_df.to_string())       
-#Alter dataframe for validation testing        
-def poison_data(df):    
-    df.at[10,'Shipped Date'] = '01/01/2000'
-    df.at[20,'Shipped Date'] = '01/01/2030'
-    df.at[55, 'Shipped Date'] = 'AAA'
+   #print(grouped_df.to_string())       
+
+#Alter dataframe with bad datafor validation testing    
+    
+# def poison_data(df):    
+#     df.at[10,'Shipped Date'] = '01/01/2000'
+#     df.at[20,'Shipped Date'] = '01/01/2030'
+#     df.at[55, 'Shipped Date'] = 'AAA'
    
-    df.at[30,'Zip'] = 333
-    df.at[40,'Zip'] = 444455556666
-    df.at[50,'Zip'] = 'ABC123'
+#     df.at[30,'Zip'] = 333
+#     df.at[40,'Zip'] = 444455556666
+#     df.at[50,'Zip'] = 'ABC123'
     
-    df.at[60,'Order Value'] = '$2000.00'
-    df.at[65,'Order Value'] = '-$20.00'
-    df.at[15,'Order Value'] = 'Fifty Dollars'
+#     df.at[60,'Order Value'] = '$2000.00'
+#     df.at[65,'Order Value'] = '-$20.00'
+#     df.at[15,'Order Value'] = 'Fifty Dollars'
    
-    df.at[25,'Shipping Cost'] = '$20000.00'
-    df.at[35,'Shipping Cost'] = '-$20.00'
-    df.at[45,'Shipping Cost'] = 'Fifty Dollars'
+#     df.at[25,'Shipping Cost'] = '$20000.00'
+#     df.at[35,'Shipping Cost'] = '-$20.00'
+#     df.at[45,'Shipping Cost'] = 'Fifty Dollars'
     
-    df.loc[0:5,'Shipment ID'] = '94612361042629129568'
+#     df.loc[0:5,'Shipment ID'] = '94612361042629129568'
     
-    return df
+#     return df
 
 #Returns Dataframe
 def import_pdf(input_path):
@@ -358,14 +368,14 @@ def import_pdf(input_path):
             page[['Customer ID', 'Zip']] = page["Customer ID Zip"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
             page = page.drop('Customer ID Zip', axis=1)
         except:
-            print("CIDZIP Pass")
+            print(f"Page {i} passes CID-ZIP check unaltered")
             
         #As above for Shipment ID and Order Number
         try:
             page[['Shipment ID', 'Order Number']] = page["Shipment ID Order Number"].apply(lambda x: pd.Series(str(x).rsplit(" ", 1)))
             page = page.drop('Shipment ID Order Number', axis=1)
         except:
-            print("SIDON Pass")
+            print(f"Page {i} passes SID-ON check unaltered")
             
         #Adresses extractor returning empty column from some input files
         try:
@@ -390,7 +400,7 @@ def import_pdf(input_path):
             page.reset_index(drop=True, inplace=True)
             df_processed = pd.concat([df_processed, page], axis=0)
         else:
-            print('Page ' + str(j) + ' failed to process with columns: ' + str(page.columns.values.tolist()))
+            print(f'Page {str(i)} failed to process with columns: {str(page.columns.values.tolist())}')
         i+=1
     df_processed.reset_index(drop=True,inplace=True)
     return df_processed
@@ -405,6 +415,8 @@ def import_csv(input_path):
 
 def build_metrics_df(df):
     df_metrics = pd.DataFrame(columns= ['Range','Count', 'Max', 'Min', 'Avg'])
+    
+    #Vars like this are here because I dont really get which pandas operations create a view and which modify the original, may have an impact on speed on very large files
     df_temp = df
     df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)
     for i, label in enumerate(rlabels):
@@ -430,19 +442,30 @@ def build_metrics_df(df):
             
         
     return df_metrics
-        
     
+#Gui configuration, passed a pysimplegui theme, returns window 
+def build_gui(theme):
+    sg.theme(theme)
+    #Min length of name, If adding names longer than 24 chars adjust
+    NAME_SIZE = 24
 
-
-def build_gui():
-    
-    NAME_SIZE = 23
-
+    #table_values should be a list instead of a dataframe
     table_values = pd.DataFrame(columns=df_columns)
+    
+    #For names, monospaced
+    font1=('Courier New',14,)
+    
+    #Window default
+    font2=('Helvetica',12,)
+    
+    #Table headers
+    font3=('Helvetica',12,'bold')
+    sg.set_options(font=font2)
+    
 
     def name(name):
         dots = NAME_SIZE-len(name)-2
-        return sg.Text(name + ' ' + '•'*dots, size=(NAME_SIZE,1), justification='r',pad=(0,0), font='Courier 10')
+        return sg.Text(name + ' ' + '•'*dots, size=(NAME_SIZE,1), justification='r',pad=(0,0), font=font1)
 
     
     layout_l=[ 
@@ -452,24 +475,35 @@ def build_gui():
     
 
     layout_r=[
-        [name('Matching orders: ')],
-        [sg.Table(headings=df_columns, auto_size_columns = False,  values=[], key='-table_display-', expand_x=True, expand_y=True, alternating_row_color='darkblue', enable_click_events=True)],
+        [sg.Text('Matching orders: ')],
+        [sg.Table(headings=df_columns, auto_size_columns = False,  values=[], key='-table_display-', expand_x=True, expand_y=True, alternating_row_color='#333333', enable_click_events=True,header_font=font3)],
         [sg.Text('Average shipping cost: '), sg.Text('      ', key='-average-'),sg.Text('Count: '), sg.Text('      ', key='-count-'),sg.Text('Max Shipping Cost: '), sg.Text('      ', key='-max-'),sg.Text('Min Shipping Cost: '), sg.Text('      ', key='-min-')]]
     
-    layout = [[name('Input file: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
+    layout = [
+        [name('Input file: '),sg.InputText(key='-input_path-'), sg.FileBrowse(), sg.Button('Load')],
         [name('Save CSV as:'), sg.InputText(key='-output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-output_path-'), sg.Button('Submit'),sg.Text('   ', key='-save_success-')],
         [name('Save Metrics CSV as:'), sg.InputText(key='-met_output_path-'), sg.FileSaveAs('Save As', file_types=(("CSV","*.csv"),), initial_folder="/results", target='-met_output_path-'), sg.Button('Save Metrics'), sg.Text('    ',key='-met_save_success-')],
         [sg.HSep()],
         [sg.Col(layout_l, p=3, expand_y=True, expand_x=False, element_justification='left'), sg.VSep(), sg.Col(layout_r, p=3,  expand_x=True, expand_y=True)]]
 
     # Create the Window
-    window = sg.Window('PDF Converter', layout, resizable=True, margins=(32,16))
-    # Event Loop to process "events" and get the "values" of the inputs
+    window = sg.Window('PDF Converter', layout, resizable=True, margins=(32,16,))
+    return window
+
+def main():
+    
+    
+    window=build_gui(sg.theme('dark grey 11'))
+    
+    #persistant variables for table sorting
+    asc=False
+    current_sort = 0
+     # Event-listener loop to trigger on user input
     while True:
         event, values = window.read()
         if event == sg.WIN_CLOSED or event == 'Cancel': # if user closes window or clicks cancel
             break
-
+        #As is prints all failures to console after first is tripped, should be changed to not attempt following steps if failed. Should also pass exception to console to clear up ambiguity
         if event == 'Load':          
             try:
                 input_path = values['-input_path-']
@@ -478,6 +512,7 @@ def build_gui():
                 elif input_path.endswith('.csv'):
                     df_actual = import_csv(input_path)
             except Exception as e:
+                #Failure here across multiple documents likely indicates PATH java / JAVA_HOME incorrectly configured. If punching 'java -version' into cmd/PowerShell returns an invalid command this needs to be resolved
                 print('Failed at import')
             
             try:
@@ -486,6 +521,7 @@ def build_gui():
                 print('Failed at Validation')
                 
             try:
+                #cloning actual to filtered allows comparison later
                 df_filtered = df_actual
                 table_values = df_actual.values.tolist()
                 window['-table_display-'].update(values=table_values)
@@ -494,7 +530,7 @@ def build_gui():
                 
             try:
                 df_temp = df_actual
-                #TODO: Repeat Code to function
+                #TODO: move repeated Code to function
                 df_temp['Shipping Cost'] = df_temp['Shipping Cost'].replace('\$|,', '', regex=True).astype(float)        
                 window['-average-'].update('$%.2f' % (df_temp['Shipping Cost'].mean()))
                 window['-count-'].update((df_temp['Shipping Cost'].count()))
@@ -509,14 +545,14 @@ def build_gui():
         if event == 'Filter':
             try:
                 selection_range = window.Element('-range_select-').Widget.curselection()[0]
-                print(selection_range)
+                #print(selection_range)
                 if selection_range == 0:
                     df_filtered = df_actual
                 else:
                     rmin = rmins[selection_range - 1]
                     rmax = rmins[selection_range]
                     df_filtered = df_actual[df_actual['Order Value'].replace('\$|,', '', regex=True).astype(float).between(rmin,rmax-0.01)]
-                print(df_filtered)
+                #print(df_filtered)
                 try:
                     table_values = df_filtered.values.tolist()
                     window['-table_display-'].update(values=table_values)
@@ -549,17 +585,31 @@ def build_gui():
                 except FileNotFoundError:
                     df_master = df_actual
                 df_master.to_csv(master_path, mode='w')
+                
+        
         if isinstance(event, tuple):
+            
+            
             if event[0] == '-table_display-':
                 row, column = event[2]
-                if row == -1:
-                    df_filtered=df_filtered.sort_values(by=df_filtered.columns[column])
+                if row == -1:                    
+                    if column == current_sort:
+                        asc = not asc
+                    else:
+                        asc = False
+                    
+                        
+                    df_filtered=df_filtered.sort_values(by=df_filtered.columns[column],ascending=asc) 
+                    current_sort=column
+                                
                     try:
+                        print(f'{asc}  {column}  {current_sort}')
+                        
                         table_values = df_filtered.values.tolist()
                         window['-table_display-'].update(values=table_values)
                     except:
                         print('failed updating gui')
-                        
+        #Saves CSV of count, min, max, and average for each range
         if event == 'Save Metrics':
             outfile_name = values['-met_output_path-']
             if outfile_name:
@@ -569,9 +619,10 @@ def build_gui():
             
     window.close()
 
+if __name__ == "__main__":
+    main()
 
-#Main
-build_gui()
+#Following is leftover from command line implimentation
 
 # if not skip_prompt:    
 #     input_path = input("Input path:\n")
