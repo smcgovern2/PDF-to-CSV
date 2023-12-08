@@ -1,4 +1,3 @@
-
 # Import Module 
 import tabula #Working Version: 2.1.0
 import pandas as pd #TODO enforce version number for deprecation #Working Version: 2.1.0
@@ -270,7 +269,8 @@ def validate_dataframe (df):
             
             
         #Zip Check, verifies numeric and length
-        zip = df.loc[i,'Zip']   
+        zip = df.loc[i,'Zip'] 
+        print(zip)  
         if not ((str(zip).isnumeric()) and 5 <= len(zip) <= 10):
             failed = True
             print("Invalid value in ZIP at index " + str(i))
@@ -372,7 +372,9 @@ def import_csv(input_path):
     
     df=pd.DataFrame(columns=df_columns)
     
-    df = pd.read_csv(input_path, names=df_columns, header=0)
+    
+    #errors='ignore' to not raise exception if there is no extra column to drop
+    df = pd.read_csv(input_path, names=df_columns, header=0).drop(['unnamed 0'],axis=1,errors='ignore')
     
     return df
 
@@ -476,7 +478,7 @@ def main():
                     df_actual = import_csv(input_path)
             except Exception as e:
                 #Failure here across multiple documents likely indicates PATH java / JAVA_HOME incorrectly configured. If punching 'java -version' into cmd/PowerShell returns an invalid command this needs to be resolved
-                print('Failed at import')
+                print(f'Failed at import with exception{e}')
             
             try:
                 df_actual = validate_dataframe(df_actual)
@@ -538,7 +540,7 @@ def main():
         if event == 'Submit':
             outfile_name = values['-output_path-']
             if outfile_name:
-                df_actual.to_csv(outfile_name, mode='w')
+                df_actual.to_csv(outfile_name, mode='w',index=False)
                 window['-save_success-'].update('Success')
                 try:
                     df_master = import_csv(master_path)
@@ -547,7 +549,7 @@ def main():
                     df_master = validate_dataframe(df_master)
                 except FileNotFoundError:
                     df_master = df_actual
-                df_master.to_csv(master_path, mode='w')
+                df_master.to_csv(master_path, mode='w', index=False)
                 
         
         if isinstance(event, tuple):
